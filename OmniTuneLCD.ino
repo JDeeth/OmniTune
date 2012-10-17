@@ -57,7 +57,6 @@ void setupOutput() {
   pinMode (D7, OUTPUT);
 
   lcd.begin (16, 2);
-  lcd.print("Hello world");
 
   pinMode (LED_BUILTIN, OUTPUT);
 }
@@ -142,8 +141,10 @@ void setupDataref() {
 short channel = NAV1; // indicates selected channel
 
 //counter for flashing characters
-int flashCount = 0;
-bool flashNow = false;
+//int flashCount = 0;
+//bool flashNow = false;
+
+void displayUpdate();
 
 elapsedMillis dispTimer = 0; //to avoid updating display too frequently
 
@@ -173,23 +174,25 @@ void loop() {
   if (dispTimer > 80) {
     dispTimer -= 80;
 
+    displayUpdate();
     //flashing sequence is Six On, Two Off, per display updates.
-    ++flashCount %= 8; // increment flashCount between 0 and 7
-    flashNow = (flashCount < 6);
-    digitalWrite(LED_BUILTIN, flashNow);
+    //++flashCount %= 8; // increment flashCount between 0 and 7
+    //flashNow = (flashCount < 6);
+    //digitalWrite(LED_BUILTIN, flashNow);
+    // on reflection, flashing is not needed with this hardware config
 
-    lcd.setCursor(0, 1);
-    lcd.print(leftDown.read());
-    lcd.setCursor(2, 1);
-    lcd.print(leftIn.read());
-    lcd.setCursor(4, 1);
-    lcd.print(leftUp.read());
-    lcd.setCursor(6, 1);
-    lcd.print(rightDown.read());
-    lcd.setCursor(8, 1);
-    lcd.print(rightIn.read());
-    lcd.setCursor(10, 1);
-    lcd.print(rightUp.read());
+    //    lcd.setCursor(0, 1);
+    //    lcd.print(leftDown.read());
+    //    lcd.setCursor(2, 1);
+    //    lcd.print(leftIn.read());
+    //    lcd.setCursor(4, 1);
+    //    lcd.print(leftUp.read());
+    //    lcd.setCursor(6, 1);
+    //    lcd.print(rightDown.read());
+    //    lcd.setCursor(8, 1);
+    //    lcd.print(rightIn.read());
+    //    lcd.setCursor(10, 1);
+    //    lcd.print(rightUp.read());
 
   }
 
@@ -248,43 +251,142 @@ void loop() {
 
   // tune frequencies if either encoder has been turned
   if (leftEncDiff || rightEncDiff) {
+
+    int freq = dataref[channel];
+
     switch (channel) {
 
+    case NAV1:
+    case NAV2:
+      if (leftEncDiff) {
+        // TUNE HI. Increment in megaherts, which is freq * 100
+        freq += leftEncDiff * 100;
+        // lap to 108-118MHz range
+        while (freq < 10800) freq += 1000;
+        while (freq >= 11800) freq -= 1000;
+      }
+      if (rightEncDiff) { //TUNE LO. Increment in decaKHz
+        //remove MHz element from freq, leaving decaKHz element
+        int mhz = freq / 100;
+        freq -= mhz * 100;
+        //increment freq in 50KHz (0.05MHz) steps
+        freq += rightEncDiff * 5;
+        //crop freq to prevent TUNE LO mode from changing TUNE HI digits
+        while (freq < 0) freq += 100;
+        while (freq >= 100) freq -= 100;
+        //reinstate MHz element
+        freq += mhz * 100;
+      }
+    break;
+
+    case COM1:
+    case COM2:
+      if (leftEncDiff) {
+        //TUNE HI. Much as NAV1/2 above
+        freq += leftEncDiff * 100;
+        // lap to 118.00 - 136.00
+        while (freq <  11800) freq += 1800;
+        while (freq >= 13600) freq -= 1800;
+      }
+      if (rightEncDiff) {
+        //TUNE LO
+        //remove megahertz from freq (digits left of decimal point)
+        int mhz = freq / 100;
+        freq -= mhz * 100;
+        //COM radios change in 25KHz steps, but X-Plane crops down to 10KHz resolution (ie 120.125 becomes 12012, losing the final 5)
+        //floating point variable used to reinstate missing 5 KHz when necessary
+        float ffreq = freq;
+        if ((freq - (10*(freq/10))) == 2 		// if dataref value ends in 2
+            || (freq - (10*(freq/10))) == 7) { 	// or dataref value ends in 7
+          ffreq += 0.5; 						// then reinstate missing 5KHz
+        }
+        //increment in 25KHz steps
+        ffreq += rightEncDiff * 2.5;
+        //convert back to integers (c++ drops the trailing .5 if necessary)
+        freq = ffreq;
+        //keep freq between 0 and <100 so this operation doesn't affect digits left of decimal point
+        while (freq < 0) freq += 100;
+        while (freq >= 100) freq -= 100;
+        //reinstate the megahertz digits
+        freq += mhz * 100;
+      }
+    break;
+
+    case ADF1:
+    case ADF2:
+    break;
+
     }
+
+    dataref[channel] = freq;
   }
-
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Display Update
+//
+// Reads datarefs and draws selected channels onto display
+//
+void displayUpdate() {
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+
+  switch (channel) {
+  case NAV1:
+  case NAV2:
+    lcd.print("NAV1");
+    if (channel == NAV1)
+      lcd.print(">");
+    lcd.setCursor(6, 0);
+    lcd.print(dataref[NAV1]);
+
+    lcd.setCursor(0, 1);
+    lcd.print("NAV2");
+    if (channel == NAV2)
+      lcd.print(">");
+    lcd.setCursor(6, 1);
+    lcd.print(dataref[NAV2]);
+
+  break;
+
+  case COM1:
+  case COM2:
+    lcd.print("COM1");
+    if (channel == COM1)
+      lcd.print(">");
+    lcd.setCursor(6, 0);
+    lcd.print(dataref[COM1]);
+
+    lcd.setCursor(0, 1);
+    lcd.print("COM2");
+    if (channel == COM2)
+      lcd.print(">");
+    lcd.setCursor(6, 1);
+    lcd.print(dataref[COM2]);
+  break;
+
+  case ADF1:
+  case ADF2:
+    lcd.print("ADF1");
+    if (channel == ADF1)
+      lcd.print(">");
+    lcd.setCursor(6, 0);
+    lcd.print(dataref[ADF1]);
+
+    lcd.setCursor(0, 1);
+    lcd.print("ADF2");
+    if (channel == ADF2)
+      lcd.print(">");
+    lcd.setCursor(6, 1);
+    lcd.print(dataref[ADF2]);
+  break;
+
+  break;
+  }
+}
+
 /*
-      //TUNE HI or TUNE LO mode
-      //read frequency from X-Plane for the selected channel
-      int freq = *channelRef[channel]; // ('freq' is a poor name for the transponder codes, but nevermind)
-
-      switch (channel) {
-
-      case 0: //nav1
-      case 1: //nav2
-        if (mode == 1) {
-          //TUNE HI. Increment in megaherts, which is freq * 100 (dataref is in decakilohertz, decaKHz)
-          freq += encDiff * 100;
-          //crop to 108-118MHz range
-          while (freq < 10800) freq += 1000;
-          while (freq >= 11800) freq -= 1000;
-        }
-        if (mode >= 2) { //TUNE LO. Increment in decaKHz
-          //remove MHz element from freq, leaving decaKHz element
-          int mhz = freq / 100;
-          freq -= mhz * 100;
-          //increment freq in 50KHz (0.05MHz) steps
-          freq += encDiff * 5;
-          //crop freq to prevent TUNE LO mode from changing TUNE HI digits
-          while (freq < 0) freq += 100;
-          while (freq >= 100) freq -= 100;
-          //reinstate MHz element
-          freq += mhz * 100;
-        }
-        //write back to X-Plane using Teensyduino linker object
-        *channelRef[channel] = freq;
-      break;
 
       case 2: //adf1
       case 3: //adf2
@@ -329,37 +431,6 @@ void loop() {
 
       case 4: //com1
       case 5: //com2
-        if (mode == 1) {
-          //TUNE HI. Much as NAV1/2 above
-          freq += encDiff * 100;
-          while (freq <  11800) freq += 1800; //laps round from 118.00 to 136.00
-          while (freq >= 13600) freq -= 1800;
-        }
-        if (mode >= 2) {
-          //TUNE LO
-          //remove megahertz from freq (digits left of decimal point)
-          int mhz = freq / 100;
-          freq -= mhz * 100;
-          //COM radios change in 25KHz steps, but X-Plane crops down to 10KHz resolution (ie 120.125 becomes 12012, losing the final 5)
-          //floating point variable used to reinstate missing 5 KHz when necessary
-          float ffreq = freq;
-          if ((freq - (10*(freq/10))) == 2 		// if dataref value ends in 2
-              || (freq - (10*(freq/10))) == 7) { 	// or dataref value ends in 7
-            ffreq += 0.5; 						// then reinstate missing 5KHz
-          }
-          //increment in 25KHz steps
-          ffreq += encDiff * 2.5;
-          //convert back to integers (c++ drops the trailing .5 if necessary)
-          freq = ffreq;
-          //keep freq between 0 and <100 so this operation doesn't affect digits left of decimal point
-          while (freq < 0) freq += 100;
-          while (freq >= 100) freq -= 100;
-          //reinstate the megahertz digits
-          freq += mhz * 100;
-        }
-        //write updated frequency back to X-Plane
-        *channelRef[channel] = freq;
-      break;
       }
     }
   }
