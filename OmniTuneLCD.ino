@@ -41,11 +41,16 @@
 // Output hardware
 //
 enum LCD_PINS {
-  RS = 39, RW, EN, D4, D5, D6, D7
+  RS = 39, 
+  RW, 
+  EN,     // these are automatically numbered from 39 to 45 
+  D4,     // thanks to the magic of enum 
+  D5, 
+  D6, 
+  D7 // = 45
 };
 
 LiquidCrystalFast lcd(RS, RW, EN, D4, D5, D6, D7);
-// LCD pins: RS  RW  EN  D4 D5 D6 D7
 
 void setupOutput() {
   pinMode (RS, OUTPUT);
@@ -181,19 +186,6 @@ void loop() {
     //digitalWrite(LED_BUILTIN, flashNow);
     // on reflection, flashing is not needed with this hardware config
 
-    //    lcd.setCursor(0, 1);
-    //    lcd.print(leftDown.read());
-    //    lcd.setCursor(2, 1);
-    //    lcd.print(leftIn.read());
-    //    lcd.setCursor(4, 1);
-    //    lcd.print(leftUp.read());
-    //    lcd.setCursor(6, 1);
-    //    lcd.print(rightDown.read());
-    //    lcd.setCursor(8, 1);
-    //    lcd.print(rightIn.read());
-    //    lcd.setCursor(10, 1);
-    //    lcd.print(rightUp.read());
-
   }
 
   /////////////////////////////////////////////////////////////////////////////
@@ -281,15 +273,13 @@ void loop() {
 
     case COM1:
     case COM2:
-      if (leftEncDiff) {
-        //TUNE HI. Much as NAV1/2 above
+      if (leftEncDiff) {//TUNE HI.
         freq += leftEncDiff * 100;
         // lap to 118.00 - 136.00
         while (freq <  11800) freq += 1800;
         while (freq >= 13600) freq -= 1800;
       }
-      if (rightEncDiff) {
-        //TUNE LO
+      if (rightEncDiff) { //TUNE LO
         //remove megahertz from freq (digits left of decimal point)
         int mhz = freq / 100;
         freq -= mhz * 100;
@@ -314,6 +304,22 @@ void loop() {
 
     case ADF1:
     case ADF2:
+      if (leftEncDiff) { // alter first two digits
+        freq += leftEncDiff * 10;
+        // crop to 190-600 KHz range
+        while (freq < 190) freq += 10;
+        while (freq >= 600) freq -= 10;
+      }
+      if (rightEncDiff) { // alter third digit
+        int digit12 = freq / 10;        //remove 1st and 2nd digits
+        freq -= digit12 * 10;           //increment freq in 1KHz steps
+        freq += rightEncDiff;
+        // lap to prevent changes to 1st and 2nd digits
+        while (freq < 0) freq += 10;
+        while (freq >= 10) freq -= 10;
+        // restore 1st and 2nd digits
+        freq += digit12 * 10;
+      }
     break;
 
     }
@@ -332,21 +338,25 @@ void displayUpdate() {
   lcd.clear();
   lcd.setCursor(0, 0);
 
+  float tmp;
+
   switch (channel) {
   case NAV1:
   case NAV2:
     lcd.print("NAV1");
     if (channel == NAV1)
       lcd.print(">");
-    lcd.setCursor(6, 0);
-    lcd.print(dataref[NAV1]);
+    lcd.setCursor(5, 0);
+    tmp = dataref[NAV1] / 100.0;
+    lcd.print(tmp);
 
     lcd.setCursor(0, 1);
     lcd.print("NAV2");
     if (channel == NAV2)
       lcd.print(">");
-    lcd.setCursor(6, 1);
-    lcd.print(dataref[NAV2]);
+    lcd.setCursor(5, 1);
+    tmp = dataref[NAV2] / 100.0;
+    lcd.print(tmp);
 
   break;
 
@@ -355,15 +365,17 @@ void displayUpdate() {
     lcd.print("COM1");
     if (channel == COM1)
       lcd.print(">");
-    lcd.setCursor(6, 0);
-    lcd.print(dataref[COM1]);
+    lcd.setCursor(5, 0);
+    tmp = dataref[COM1] / 100.0;
+    lcd.print(tmp);
 
     lcd.setCursor(0, 1);
     lcd.print("COM2");
     if (channel == COM2)
       lcd.print(">");
-    lcd.setCursor(6, 1);
-    lcd.print(dataref[COM2]);
+    lcd.setCursor(5, 1);
+    tmp = dataref[COM2] / 100.0;
+    lcd.print(tmp);
   break;
 
   case ADF1:
@@ -371,134 +383,17 @@ void displayUpdate() {
     lcd.print("ADF1");
     if (channel == ADF1)
       lcd.print(">");
-    lcd.setCursor(6, 0);
+    lcd.setCursor(5, 0);
     lcd.print(dataref[ADF1]);
 
     lcd.setCursor(0, 1);
     lcd.print("ADF2");
     if (channel == ADF2)
       lcd.print(">");
-    lcd.setCursor(6, 1);
+    lcd.setCursor(5, 1);
     lcd.print(dataref[ADF2]);
   break;
 
-  break;
   }
 }
-
-/*
-
-      case 2: //adf1
-      case 3: //adf2
-        if (mode == 1) {
-          //TUNE 1st Digit
-          freq += encDiff * 100;
-          while (freq < 100) freq += 900;
-          while (freq >= 1000) freq -= 900;
-        }
-        if (mode == 2) {
-          //TUNE 2nd Digit
-          //remove 1st digit
-          int digit1 = freq / 100;
-          freq -= digit1 * 100;
-          //increment 2nd digit
-          freq += encDiff * 10;
-          //crop to prevent changes to 1st digit
-          while (freq < 0) freq += 100;
-          while (freq >= 100) freq -= 100;
-          //restore 1st digit
-          freq += digit1 * 100;
-          //NDB range is nominally 190-535KHz, but we'll allow 100-999KHz to be selected
-          while (freq < 100) freq += 10;
-        }
-        if (mode >= 3) {
-          //TUNE 3rd Digit
-          //remove 1st and 2nd digits
-          int digit12 = freq / 10;
-          freq -= digit12 * 10;
-          //increment freq in 1KHz steps
-          freq += encDiff;
-          //crop to prevent changes to 1st and 2nd digits
-          while (freq < 0) freq += 10;
-          while (freq >= 10) freq -= 10;
-          //restore 1st and 2nd digits
-          freq += digit12 * 10;
-          //ensure next Mode is Menu
-        }
-        //write back to X-Plane via Teensyduino
-        *channelRef[channel] = freq;
-      break;
-
-      case 4: //com1
-      case 5: //com2
-      }
-    }
-  }
-}
-
-void dispRefresh() {
-  // display-handling class takes char[] as input
-
-  //This buffer will eventually be sent to the display-handling class to be displayed on the hardware
-  char buf[9] = "        "; //8 spaces
-
-  //read channel's dataref and convert it into char[] fsVal
-  int fsInt = *channelRef[channel];
-  char fsVal[6] = "     ";
-  itoa (fsInt, fsVal, 10);
-
-  const char Glyph_N1 = '\x88';
-  const char Glyph_N2 = '\x89';
-  const char Glyph_C1 = '\x8c';
-  const char Glyph_C2 = '\x8d';
-
-  switch (channel) { //identify selected channel on left side:
-  case 0:  //nav1
-    buf[0] = Glyph_N1;
-  break;
-  case 1:  //nav2
-    buf[0] = Glyph_N2;
-  break;
-  case 2:  //adf1
-    strcpy(&buf[0], "ADF1 ");
-    if (mode) buf[4] = '>'; //if device is in 'alter frequency' mode, write "ADF1>456", otherwise have it as "ADF1 456"
-  break;
-  case 3:  //adf2
-    strcpy(&buf[0], "ADF2 ");
-    if (mode) buf[4] = '>';
-  break;
-  case 4:  //com1
-    buf[0] = Glyph_C1;
-  break;
-  case 5:  //com2
-    buf[0] = Glyph_C2;
-  break;
-
-  //for MHz radios, display frequency
-  switch (channel) {
-  //MHz frequencies
-  case 0:  //nav1
-  case 1:  //nav2
-  case 4:  //com1
-  case 5:  //com2
-    if(mode) buf[1] = '>';
-    strcpy(&buf[2], &fsVal[0]);
-    if(mode==1 && !flashNow) strcpy(&buf[2], "   "); //flash digits left of decimal if they're selected for altering
-    buf[5] = '.';
-    strcpy(&buf[6], &fsVal[3]);
-    if(mode==2 && !flashNow) strcpy(&buf[6], "  "); //flash digits right of decimal if they're selected for altering
-  break;
-    //ADF frequencies
-  case 2:  //adf1
-  case 3:  //adf2
-    strcpy(&buf[5], &fsVal[0]);
-    if(mode && !flashNow) buf[4+mode] = ' ';
-  break;
-  }
-
-  //finally...
-  //send buf to display-handling class, so it will be written on the display hardware
-  disp.writeWord(buf);
-}
-*/
 
