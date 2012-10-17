@@ -116,7 +116,7 @@ short rightEncPrev;
 // I am using ordinary integers, because I don't have a working X-Plane install
 
 enum DATAREF_NAMES {
-  NAV1, NAV2, COM1, COM2, ADF1, ADF2, XP_CODE, XP_CODE_LO, XP_MODE,
+  NAV1, NAV2, COM1, COM2, ADF1, ADF2, XP_MODE, XP_CODE, XP_CODE_LO,
   DATAREF_COUNT
 };
 
@@ -441,7 +441,7 @@ void displayUpdate() {
   /////////////////
   // Print transponder code
   //
-  lcd.setCursor(12, 0);
+  lcd.setCursor(12, 1);
   // pad out to right if code has less than four digits
   if(dataref[XP_CODE] < 1000)
     lcd.print("0");
@@ -454,7 +454,7 @@ void displayUpdate() {
   /////////////////
   // Print transponder mode
   //
-  lcd.setCursor(12, 1);
+  lcd.setCursor(12, 0);
   switch (dataref[XP_MODE]) {
 
   case XP_OFF:
@@ -488,22 +488,22 @@ void displayUpdate() {
   //
   switch(channel) {
   case XP_CODE:
-    lcd.setCursor(11, 0);
+    lcd.setCursor(11, 1);
     lcd.print(">");
     if(!flashNow) {
       lcd.print("  "); //overprint first two transponder-code characters
     }
   break;
   case XP_CODE_LO:
-    lcd.setCursor(11, 0);
+    lcd.setCursor(11, 1);
     lcd.print(">");
     if(!flashNow) {
-      lcd.setCursor(14, 0);
+      lcd.setCursor(14, 1);
       lcd.print("  "); //overprint last two transponder-code characters
     }
   break;
   case XP_MODE:
-    lcd.setCursor(11, 1);
+    lcd.setCursor(11, 0);
     lcd.print(">");
   break;
   } // switch, transponder selection indicator
