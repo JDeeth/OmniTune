@@ -35,9 +35,11 @@
 
 ///////////////////////////////////////////////////////////////////////////////
 // Hardware setup
+//
 
 ///////////////////
 // Output hardware
+//
 enum LCD_PINS {
   RS = 39, RW, EN, D4, D5, D6, D7
 };
@@ -57,23 +59,24 @@ void setupOutput() {
   lcd.begin (16, 2);
   lcd.print("Hello world");
 
-  pinmode (LED_BUILTIN, OUTPUT);
+  pinMode (LED_BUILTIN, OUTPUT);
 }
 
 ///////////////////
 // Input hardware
-
+//
+//
 // provisional plan: left up/down for coarse changes, right up/down for fine
 // changes, left/right in for prev/next channel
-
+//
 enum INPUT_PINS {
-  PIN_LEFT_UP = 4,
+  PIN_LEFT_UP = 8,
   PIN_LEFT_DOWN = 0,
-  PIN_LEFT_IN = 16,
+  PIN_LEFT_IN = 4,
 
-  PIN_RIGHT_UP = 12,
-  PIN_RIGHT_DOWN = 8,
-  PIN_RIGHT_IN = 17
+  PIN_RIGHT_UP = 17,
+  PIN_RIGHT_DOWN = 12,
+  PIN_RIGHT_IN = 16
 };
 
 // I am using buttons instead of encoders, which I don't have
@@ -94,12 +97,21 @@ void setupInput () {
   pinMode (PIN_RIGHT_IN, INPUT_PULLUP);
 }
 
+///////////////////
+// Dummy encoders
+//
+short leftEnc;  // these are masquerading as Encoder objects
+short rightEnc;
+
+short leftEncPrev;  // position of encoders when last inspected
+short rightEncPrev;
+
 ///////////////////////////////////////////////////////////////////////////////
 // X-Plane objects
 // I am using ordinary integers, because I don't have a working X-Plane install
 
 enum DATAREF_NAMES {
-  NAV1, NAV2, ADF1, ADF2, COM1, COM2,
+  NAV1, NAV2, COM1, COM2, ADF1, ADF2,
   DATAREF_COUNT
 };
 
@@ -110,29 +122,24 @@ void setupDataref() {
   // commented for offline testing
   //dataref[NAV1] = XPlaneRef("sim/cockpit2/radios/actuators/nav1_frequency_hz");
   //dataref[NAV2] = XPlaneRef("sim/cockpit2/radios/actuators/nav2_frequency_hz");
-  //dataref[ADF1] = XPlaneRef("sim/cockpit2/radios/actuators/adf1_frequency_hz");
-  //dataref[ADF2] = XPlaneRef("sim/cockpit2/radios/actuators/adf2_frequency_hz");
   //dataref[COM1] = XPlaneRef("sim/cockpit2/radios/actuators/com1_frequency_hz");
   //dataref[COM2] = XPlaneRef("sim/cockpit2/radios/actuators/com2_frequency_hz");
+  //dataref[ADF1] = XPlaneRef("sim/cockpit2/radios/actuators/adf1_frequency_hz");
+  //dataref[ADF2] = XPlaneRef("sim/cockpit2/radios/actuators/adf2_frequency_hz");
 
   // dummy values for offline testing
   dataref[NAV1] = 11110;
   dataref[NAV2] = 11220;
-  dataref[ADF1] = 345;
-  dataref[ADF2] = 456;
   dataref[COM1] = 12330;
   dataref[COM2] = 12440;
+  dataref[ADF1] = 345;
+  dataref[ADF2] = 456;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Local objects
 
-enum MODE_NAMES {
-  mNAV1, mNAV2, mADF1, mADF2, mCOM1, mCOM2,
-  MODE_COUNT
-};
-
-short mode = mNAV1;
+short channel = NAV1; // indicates selected channel
 
 //counter for flashing characters
 int flashCount = 0;
@@ -151,67 +158,103 @@ void setup() {
 }
 
 void loop() {
+  // updates
   FlightSim.update();
+
+  leftUp.update();
+  leftDown.update();
+  leftIn.update();
+
+  rightUp.update();
+  rightDown.update();
+  rightIn.update();
 
   //display updated every 80ms (12.5fps)
   if (dispTimer > 80) {
     dispTimer -= 80;
 
-    //increment character flashing counter
     //flashing sequence is Six On, Two Off, per display updates.
-    ++flashCount;
-    flashCount %= 8;
-    if (flashCount < 6){
-      flashNow = 1;
-      digitalWrite(LED_BUILTIN, HIGH);
-    }
-    else {
-      flashNow = 0;
-      digitalWrite(LED_BUILTIN, LOW);
+    ++flashCount %= 8; // increment flashCount between 0 and 7
+    flashNow = (flashCount < 6);
+    digitalWrite(LED_BUILTIN, flashNow);
+
+    lcd.setCursor(0, 1);
+    lcd.print(leftDown.read());
+    lcd.setCursor(2, 1);
+    lcd.print(leftIn.read());
+    lcd.setCursor(4, 1);
+    lcd.print(leftUp.read());
+    lcd.setCursor(6, 1);
+    lcd.print(rightDown.read());
+    lcd.setCursor(8, 1);
+    lcd.print(rightIn.read());
+    lcd.setCursor(10, 1);
+    lcd.print(rightUp.read());
+
+  }
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Input processing
+
+  /////////////////
+  // Mode change buttons
+  //
+  if(leftIn.fallingEdge()) {     // when left encoder pressed
+    --channel;                   // select previous channel
+    while (channel < 0)          // if there's no previous channel,
+      channel += DATAREF_COUNT;  // go to the last channel.
+  }
+
+  if(rightIn.fallingEdge()) {    // when right encoder pressed
+    ++channel;                   // select next channel
+    while (channel >= DATAREF_COUNT)
+      channel -= DATAREF_COUNT;  // when we go past the last, go back to the first
+  }
+
+  /////////////////
+  // Dummy encoders
+  //
+  if(leftUp.fallingEdge()) {
+    ++leftEnc;
+  }
+  if(leftDown.fallingEdge()) {
+    --leftEnc;
+  }
+  if(rightUp.fallingEdge()) {
+    ++rightEnc;
+  }
+  if(rightDown.fallingEdge()) {
+    --rightEnc;
+  }
+  short leftEncDiff = (leftEnc - leftEncPrev);
+  short rightEncDiff = (rightEnc - rightEncPrev);
+  //
+  // We can substitute this code for real encoder-handling code with only
+  // minimal changes to the rest of the code. We'll still have the two
+  // encDiff integers to show how many detents the encoders have been turned by
+  //
+  /////////////////
+
+  // reset encoders if they've been turned
+  if (leftEncDiff) {
+    leftEnc = 0; //substitute leftEnc.write(0) when real encoders are used
+    leftEncPrev = 0;
+  }
+
+  if (rightEncDiff) {
+    rightEnc = 0;
+    rightEncPrev = 0;
+  }
+
+  // tune frequencies if either encoder has been turned
+  if (leftEncDiff || rightEncDiff) {
+    switch (channel) {
+
     }
   }
+
 }
 /*
-  //--------------------------------------------------------------------------
-  //Hardware input code
-
-  //following code runs every Teensy loop
-
-  //pressbutton on encoder shaft
-  encPress.update();
-  if(encPress.fallingEdge()) { //when the click-button is pressed
-    //special case for leaving Transponder Code mode, going straight to Transponder Mode
-    if(channel==6 && mode == 4 && xMode <=1) { //Xpdr Code channel, leaving 4th digit alter mode, and xpdr is not transmitting
-      channel = 7; //go to Xpdr Mode channel
-      mode = 1; //go to Xpdr Mode Alter mode
-    }
-    else
-      ++mode %= 1 + channelModes[channel]; //increment mode and set to 0 if it's now outside the range for this channel
-  }
-
-  //encoder rotation
-  //(necessary to check this as rapidly as possible)
-  //(except perhaps if you use interrupts etc from more advanced parts of Encoders.h)
-  int encDiff = (encTurn.read() - encPos) / 4; //enc.read changes by 4 for each detent, for the encoders I bought
-
-  //if the encoder's been turned by one or more detents
-  if (encDiff) {
-    encReset();
-
-    //reset flash counter (so digits will always be lit for at least 6 display update cycles after a digit is changed)
-    //this means the digits will always be lit when you're turning the knob
-    flashCount = 0;
-
-    if (mode==0) {
-      //MENU mode
-      //change channel
-      channel += encDiff; //encDiff can be negative
-
-      //keep channel between 0 and numChannels-1
-      while (channel < 0)            channel += numChannels;
-      while (channel >= numChannels) channel -= numChannels;
-    }
-    else {
       //TUNE HI or TUNE LO mode
       //read frequency from X-Plane for the selected channel
       int freq = *channelRef[channel]; // ('freq' is a poor name for the transponder codes, but nevermind)
@@ -321,9 +364,6 @@ void loop() {
     }
   }
 }
-
-//----------------------------------------------------------------------------
-//Display code
 
 void dispRefresh() {
   // display-handling class takes char[] as input
