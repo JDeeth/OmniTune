@@ -1,6 +1,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 //
-// OmniTune (incomplete)
+// OmniTune
 //
 // Radio tuner firmware for X-Plane. Designed for a 16x2 display and two
 // encoders with integral pushbuttons, or similar.
@@ -41,12 +41,12 @@
 // Output hardware
 //
 enum LCD_PINS {
-  RS = 39, 
-  RW, 
-  EN,     // these are automatically numbered from 39 to 45 
-  D4,     // thanks to the magic of enum 
-  D5, 
-  D6, 
+  RS = 39,
+  RW,
+  EN,     // these are automatically numbered from 39 to 45
+  D4,     // thanks to the magic of enum
+  D5,
+  D6,
   D7 // = 45
 };
 
@@ -115,8 +115,13 @@ short rightEncPrev;
 // I am using ordinary integers, because I don't have a working X-Plane install
 
 enum DATAREF_NAMES {
-  NAV1, NAV2, COM1, COM2, ADF1, ADF2,
+  NAV1, NAV2, COM1, COM2, ADF1, ADF2, XP_CODE, XP_CODE_LO, XP_MODE,
   DATAREF_COUNT
+};
+
+enum XP_MODES {
+  XP_OFF, XP_STBY, XP_ON, XP_ALT, XP_TEST,
+  XP_MODE_COUNT
 };
 
 int dataref[DATAREF_COUNT];
@@ -130,6 +135,9 @@ void setupDataref() {
   //dataref[COM2] = XPlaneRef("sim/cockpit2/radios/actuators/com2_frequency_hz");
   //dataref[ADF1] = XPlaneRef("sim/cockpit2/radios/actuators/adf1_frequency_hz");
   //dataref[ADF2] = XPlaneRef("sim/cockpit2/radios/actuators/adf2_frequency_hz");
+  //dataref[XP_CODE] = XPlaneRef("sim/cockpit2/radios/actuators/transponder_code");
+  //dataref[XP_CODE_LO] = 0; // This should not be used
+  //dataref[XP_MODE] = XPlaneRef("sim/cockpit/radios/transponder_mode");
 
   // dummy values for offline testing
   dataref[NAV1] = 11110;
@@ -138,6 +146,9 @@ void setupDataref() {
   dataref[COM2] = 12440;
   dataref[ADF1] = 345;
   dataref[ADF2] = 456;
+  dataref[XP_CODE] = 1200;
+  dataref[XP_CODE_LO] = 0; // should not be used
+  dataref[XP_MODE] = XP_ON;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -145,9 +156,9 @@ void setupDataref() {
 
 short channel = NAV1; // indicates selected channel
 
-//counter for flashing characters
-//int flashCount = 0;
-//bool flashNow = false;
+//counter for flashing characters (transponder digits)
+int flashCount = 0;
+bool flashNow = false;
 
 void displayUpdate();
 
@@ -180,11 +191,10 @@ void loop() {
     dispTimer -= 80;
 
     displayUpdate();
-    //flashing sequence is Six On, Two Off, per display updates.
-    //++flashCount %= 8; // increment flashCount between 0 and 7
-    //flashNow = (flashCount < 6);
+    // Flashing sequence is Six On, Two Off, per display updates.
+    ++flashCount %= 8; // increment flashCount between 0 and 7
+    flashNow = (flashCount < 6);
     //digitalWrite(LED_BUILTIN, flashNow);
-    // on reflection, flashing is not needed with this hardware config
 
   }
 
@@ -246,7 +256,7 @@ void loop() {
 
     int freq = dataref[channel];
 
-    switch (channel) {
+    switch (channel) { // tune selected channel
 
     case NAV1:
     case NAV2:
@@ -322,7 +332,61 @@ void loop() {
       }
     break;
 
+    case XP_CODE_LO:
+      freq = dataref[XP_CODE];
+      // fall through
+    case XP_CODE:
+      // if transponder is active, put it into standby before altering code
+      if (dataref[XP_MODE] >= XP_ON)
+        dataref[XP_MODE] = XP_STBY;
+      // split transponder code into digits
+    {
+      short codeDigit[4];
+      codeDigit[0] = freq/1000;
+      codeDigit[1] = (freq - 1000 *(freq/1000) ) / 100;
+      codeDigit[2] = (freq - 100 * (freq/100) ) / 10;
+      codeDigit[3] = freq - 10 * (freq/10);
+
+      if (channel == XP_CODE) { // alter first two digits
+
+        codeDigit[0] += leftEncDiff;
+        // lap each digit to 0-7 range
+        // (transponder is octal code)
+        while (codeDigit[0] < 0) codeDigit[0] += 8;
+        while (codeDigit[0] > 7) codeDigit[0] -= 8;
+        codeDigit[1] += rightEncDiff;
+        while (codeDigit[1] < 0) codeDigit[1] += 8;
+        while (codeDigit[1] > 7) codeDigit[1] -= 8;
+
+      } else { // alter last two digits
+
+        codeDigit[2] += leftEncDiff;
+        while (codeDigit[2] < 0) codeDigit[2] += 8;
+        while (codeDigit[2] > 7) codeDigit[2] -= 8;
+        codeDigit[3] += rightEncDiff;
+        while (codeDigit[3] < 0) codeDigit[3] += 8;
+        while (codeDigit[3] > 7) codeDigit[3] -= 8;
+
+      } // alter codeDigit
+
+      // recombine codeDigit
+      freq = codeDigit[0] * 1000 + codeDigit[1] * 100 + codeDigit[2] * 10 + codeDigit[3];
+
+      if(channel == XP_CODE_LO)
+        dataref[XP_CODE] = freq;
     }
+    break;
+
+    case XP_MODE:
+      freq += leftEncDiff;
+      freq += rightEncDiff;
+      if (freq < 0)
+        freq = 0;
+      if (freq >= XP_MODE_COUNT)
+        freq = XP_MODE_COUNT - 1;
+    break;
+
+    } // switch, tune selected channel
 
     dataref[channel] = freq;
   }
@@ -335,14 +399,23 @@ void loop() {
 //
 void displayUpdate() {
 
+  /////////////////
+  // Set up display
+  //
   lcd.clear();
   lcd.setCursor(0, 0);
 
-  float tmp;
+  /////////////////
+  // Print selected channels
+  //
+  float tmp; // for putting decimal point into integer dataref frequencies
 
-  switch (channel) {
+  switch (channel) { // print selected channels
   case NAV1:
   case NAV2:
+  case XP_CODE:
+  case XP_CODE_LO:
+  case XP_MODE:
     lcd.print("NAV1");
     if (channel == NAV1)
       lcd.print(">");
@@ -357,7 +430,6 @@ void displayUpdate() {
     lcd.setCursor(5, 1);
     tmp = dataref[NAV2] / 100.0;
     lcd.print(tmp);
-
   break;
 
   case COM1:
@@ -394,6 +466,77 @@ void displayUpdate() {
     lcd.print(dataref[ADF2]);
   break;
 
-  }
-}
+  } // switch, print selected channels
+
+  /////////////////
+  // Print transponder code
+  //
+  lcd.setCursor(12, 0);
+  // pad out to right if code has less than four digits
+  if(dataref[XP_CODE] < 1000)
+    lcd.print("0");
+  if(dataref[XP_CODE] < 100)
+    lcd.print("0");
+  if(dataref[XP_CODE] < 10)
+    lcd.print("0");
+  lcd.print(dataref[XP_CODE]);
+
+  /////////////////
+  // Print transponder mode
+  //
+  lcd.setCursor(12, 1);
+  switch (dataref[XP_MODE]) {
+
+  case XP_OFF:
+    lcd.print(" OFF");
+  break;
+
+  case XP_STBY:
+    lcd.print("STBY");
+  break;
+
+  case XP_ON:
+    lcd.print(" ON ");
+  break;
+
+  case XP_ALT:
+    lcd.print(" ALT");
+  break;
+
+  case XP_TEST:
+  default:
+    lcd.print("TEST");
+  break;
+
+  } // switch, display transponder mode and code
+
+  /////////////////
+  // Transponder selection indication
+  //
+  // This is the > symbol next to the code or mode. Also the selected two
+  // digits of the transponder code will flash.
+  //
+  switch(channel) {
+  case XP_CODE:
+    lcd.setCursor(11, 0);
+    lcd.print(">");
+    if(!flashNow) {
+      lcd.print("  "); //overprint first two transponder-code characters
+    }
+  break;
+  case XP_CODE_LO:
+    lcd.setCursor(11, 0);
+    lcd.print(">");
+    if(!flashNow) {
+      lcd.setCursor(14, 0);
+      lcd.print("  "); //overprint last two transponder-code characters
+    }
+  break;
+  case XP_MODE:
+    lcd.setCursor(11, 1);
+    lcd.print(">");
+  break;
+  } // switch, transponder selection indicator
+
+} // displayUpdate
 
