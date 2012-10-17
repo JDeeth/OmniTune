@@ -9,6 +9,11 @@
 // Arduino+Teensyduino framework. This instance of the code is completely
 // independent of the PC, other than for power; it does not connect to X-Plane.
 //
+// I don't have any encoders available. This code is written for encoders,
+// using tested code which worked well a few months ago, but I cannot test it
+// myself at this time unfortunately. Nonetheless I'm pretty sure it will work
+// without a problem.
+//
 // Copyright 2012 Jack Deeth
 //
 // This program is free software: you can redistribute it and/or modify
@@ -74,38 +79,34 @@ void setupOutput() {
 // changes, left/right in for prev/next channel
 //
 enum INPUT_PINS {
-  PIN_LEFT_UP = 8,
-  PIN_LEFT_DOWN = 0,
+  PIN_LEFT_ENC_A = 8,
+  PIN_LEFT_ENC_B = 0,
   PIN_LEFT_IN = 4,
 
-  PIN_RIGHT_UP = 17,
-  PIN_RIGHT_DOWN = 12,
+  PIN_RIGHT_ENC_A = 17,
+  PIN_RIGHT_ENC_B = 12,
   PIN_RIGHT_IN = 16
 };
 
-// I am using buttons instead of encoders, which I don't have
-Bounce leftUp = Bounce (PIN_LEFT_UP, 5);
-Bounce leftDown = Bounce (PIN_LEFT_DOWN, 5);
-Bounce leftIn = Bounce (PIN_LEFT_IN, 5);
-
-Bounce rightUp = Bounce (PIN_RIGHT_UP, 5);
-Bounce rightDown = Bounce (PIN_RIGHT_DOWN, 5);
-Bounce rightIn = Bounce (PIN_RIGHT_IN, 5);
-
 void setupInput () {
-  pinMode (PIN_LEFT_UP, INPUT_PULLUP);
-  pinMode (PIN_LEFT_DOWN, INPUT_PULLUP);
+  pinMode (PIN_LEFT_ENC_A, INPUT_PULLUP);
+  pinMode (PIN_LEFT_ENC_B, INPUT_PULLUP);
   pinMode (PIN_LEFT_IN, INPUT_PULLUP);
-  pinMode (PIN_RIGHT_UP, INPUT_PULLUP);
-  pinMode (PIN_RIGHT_DOWN, INPUT_PULLUP);
+  pinMode (PIN_RIGHT_ENC_A, INPUT_PULLUP);
+  pinMode (PIN_RIGHT_ENC_B, INPUT_PULLUP);
   pinMode (PIN_RIGHT_IN, INPUT_PULLUP);
 }
 
+Bounce leftIn = Bounce (PIN_LEFT_IN, 5);
+Bounce rightIn = Bounce (PIN_RIGHT_IN, 5);
+
 ///////////////////
-// Dummy encoders
+// Encoders
 //
-short leftEnc;  // these are masquerading as Encoder objects
-short rightEnc;
+Encoder leftEnc(PIN_LEFT_ENC_A, PIN_LEFT_ENC_B);
+Encoder rightEnc(PIN_RIGHT_ENC_A, PIN_RIGHT_ENC_B);
+
+const short ENC_CHANGE_PER_DETENT = 4; // may be 1, 2, or 4 depending on model
 
 short leftEncPrev;  // position of encoders when last inspected
 short rightEncPrev;
@@ -124,31 +125,18 @@ enum XP_MODES {
   XP_MODE_COUNT
 };
 
-int dataref[DATAREF_COUNT];
-//FlightSimInteger dataref[DATAREF_COUNT];
+FlightSimInteger dataref[DATAREF_COUNT];
 
 void setupDataref() {
-  // commented for offline testing
-  //dataref[NAV1] = XPlaneRef("sim/cockpit2/radios/actuators/nav1_frequency_hz");
-  //dataref[NAV2] = XPlaneRef("sim/cockpit2/radios/actuators/nav2_frequency_hz");
-  //dataref[COM1] = XPlaneRef("sim/cockpit2/radios/actuators/com1_frequency_hz");
-  //dataref[COM2] = XPlaneRef("sim/cockpit2/radios/actuators/com2_frequency_hz");
-  //dataref[ADF1] = XPlaneRef("sim/cockpit2/radios/actuators/adf1_frequency_hz");
-  //dataref[ADF2] = XPlaneRef("sim/cockpit2/radios/actuators/adf2_frequency_hz");
-  //dataref[XP_CODE] = XPlaneRef("sim/cockpit2/radios/actuators/transponder_code");
-  //dataref[XP_CODE_LO] = 0; // This should not be used
-  //dataref[XP_MODE] = XPlaneRef("sim/cockpit/radios/transponder_mode");
-
-  // dummy values for offline testing
-  dataref[NAV1] = 11110;
-  dataref[NAV2] = 11220;
-  dataref[COM1] = 12330;
-  dataref[COM2] = 12440;
-  dataref[ADF1] = 345;
-  dataref[ADF2] = 456;
-  dataref[XP_CODE] = 1200;
-  dataref[XP_CODE_LO] = 0; // should not be used
-  dataref[XP_MODE] = XP_ON;
+  dataref[NAV1] = XPlaneRef("sim/cockpit2/radios/actuators/nav1_frequency_hz");
+  dataref[NAV2] = XPlaneRef("sim/cockpit2/radios/actuators/nav2_frequency_hz");
+  dataref[COM1] = XPlaneRef("sim/cockpit2/radios/actuators/com1_frequency_hz");
+  dataref[COM2] = XPlaneRef("sim/cockpit2/radios/actuators/com2_frequency_hz");
+  dataref[ADF1] = XPlaneRef("sim/cockpit2/radios/actuators/adf1_frequency_hz");
+  dataref[ADF2] = XPlaneRef("sim/cockpit2/radios/actuators/adf2_frequency_hz");
+  dataref[XP_CODE] = XPlaneRef("sim/cockpit2/radios/actuators/transponder_code");
+  dataref[XP_CODE_LO] = 0; // This should not be used
+  dataref[XP_MODE] = XPlaneRef("sim/cockpit/radios/transponder_mode");
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -175,18 +163,14 @@ void setup() {
 }
 
 void loop() {
-  // updates
+  /////////////////////////////////////////////////////////////////////////////
+  // Updates
   FlightSim.update();
 
-  leftUp.update();
-  leftDown.update();
   leftIn.update();
-
-  rightUp.update();
-  rightDown.update();
   rightIn.update();
 
-  //display updated every 80ms (12.5fps)
+  // display update every 80ms (12.5fps)
   if (dispTimer > 80) {
     dispTimer -= 80;
 
@@ -195,7 +179,6 @@ void loop() {
     ++flashCount %= 8; // increment flashCount between 0 and 7
     flashNow = (flashCount < 6);
     //digitalWrite(LED_BUILTIN, flashNow);
-
   }
 
   /////////////////////////////////////////////////////////////////////////////
@@ -218,21 +201,8 @@ void loop() {
 
   /////////////////
   // Dummy encoders
-  //
-  if(leftUp.fallingEdge()) {
-    ++leftEnc;
-  }
-  if(leftDown.fallingEdge()) {
-    --leftEnc;
-  }
-  if(rightUp.fallingEdge()) {
-    ++rightEnc;
-  }
-  if(rightDown.fallingEdge()) {
-    --rightEnc;
-  }
-  short leftEncDiff = (leftEnc - leftEncPrev);
-  short rightEncDiff = (rightEnc - rightEncPrev);
+  short leftEncDiff = (leftEnc.read() - leftEncPrev);
+  short rightEncDiff = (rightEnc.read() - rightEncPrev);
   //
   // We can substitute this code for real encoder-handling code with only
   // minimal changes to the rest of the code. We'll still have the two
@@ -242,12 +212,12 @@ void loop() {
 
   // reset encoders if they've been turned
   if (leftEncDiff) {
-    leftEnc = 0; //substitute leftEnc.write(0) when real encoders are used
+    leftEnc.write(0); //substitute leftEnc.write(0) when real encoders are used
     leftEncPrev = 0;
   }
 
   if (rightEncDiff) {
-    rightEnc = 0;
+    rightEnc.write(0);
     rightEncPrev = 0;
   }
 
