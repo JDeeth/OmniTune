@@ -1,9 +1,9 @@
 ///////////////////////////////////////////////////////////////////////////////
 //
-// OmniTune
+// OmniTune - Encoder Testing variant
 //
-// Radio tuner firmware for X-Plane. Designed for a 16x2 display and two
-// encoders with integral pushbuttons, or similar.
+// Radio tuner firmware for X-Plane. This version will display encoder readings
+// in the transponder positions for hardware debug purposes.
 //
 // This code is written for the PJRC Teensy board, v2.0 or higher, using the
 // Arduino+Teensyduino framework. This instance of the code is completely
@@ -79,6 +79,7 @@ void setupOutput() {
 // changes, left/right in for prev/next channel
 //
 enum INPUT_PINS {
+  // connect encoders to interrupt pins!
   PIN_LEFT_ENC_A = 14,
   PIN_LEFT_ENC_B = 15,
   PIN_LEFT_IN = 18,
@@ -106,7 +107,7 @@ Bounce rightIn = Bounce (PIN_RIGHT_IN, 5);
 Encoder leftEnc(PIN_LEFT_ENC_A, PIN_LEFT_ENC_B);
 Encoder rightEnc(PIN_RIGHT_ENC_A, PIN_RIGHT_ENC_B);
 
-const short ENC_CHANGE_PER_DETENT = 4; // may be 1, 2, or 4 depending on model
+const short ENC_CHANGE_PER_DETENT = 1; // may be 1, 2, or 4 depending on model
 
 short leftEncPrev;  // position of encoders when last inspected
 short rightEncPrev;
@@ -199,26 +200,16 @@ void loop() {
       channel -= DATAREF_COUNT;  // when we go past the last, go back to the first
   }
 
-  /////////////////
-  // Dummy encoders
   short leftEncDiff = (leftEnc.read() - leftEncPrev);
   short rightEncDiff = (rightEnc.read() - rightEncPrev);
-  //
-  // We can substitute this code for real encoder-handling code with only
-  // minimal changes to the rest of the code. We'll still have the two
-  // encDiff integers to show how many detents the encoders have been turned by
-  //
-  /////////////////
 
   // reset encoders if they've been turned
   if (leftEncDiff) {
-    leftEnc.write(0); //substitute leftEnc.write(0) when real encoders are used
-    leftEncPrev = 0;
+    leftEncPrev = leftEnc.read(); //substitute leftEnc.write(0) when real encoders are used
   }
 
   if (rightEncDiff) {
-    rightEnc.write(0);
-    rightEncPrev = 0;
+    rightEncPrev = rightEnc.read();
   }
 
   // tune frequencies if either encoder has been turned
@@ -442,43 +433,45 @@ void displayUpdate() {
   // Print transponder code
   //
   lcd.setCursor(12, 1);
+  lcd.print(rightEnc.read());
   // pad out to right if code has less than four digits
-  if(dataref[XP_CODE] < 1000)
-    lcd.print("0");
-  if(dataref[XP_CODE] < 100)
-    lcd.print("0");
-  if(dataref[XP_CODE] < 10)
-    lcd.print("0");
-  lcd.print(dataref[XP_CODE]);
+  //if(dataref[XP_CODE] < 1000)
+  //  lcd.print("0");
+  //if(dataref[XP_CODE] < 100)
+  //  lcd.print("0");
+  //if(dataref[XP_CODE] < 10)
+  //  lcd.print("0");
+  //lcd.print(dataref[XP_CODE]);
 
   /////////////////
   // Print transponder mode
   //
   lcd.setCursor(12, 0);
-  switch (dataref[XP_MODE]) {
+  lcd.print (leftEnc.read());
+//  switch (dataref[XP_MODE]) {
 
-  case XP_OFF:
-    lcd.print(" OFF");
-  break;
+//  case XP_OFF:
+//    lcd.print(" OFF");
+//  break;
 
-  case XP_STBY:
-    lcd.print("STBY");
-  break;
+//  case XP_STBY:
+//    lcd.print("STBY");
+//  break;
 
-  case XP_ON:
-    lcd.print(" ON ");
-  break;
+//  case XP_ON:
+//    lcd.print(" ON ");
+//  break;
 
-  case XP_ALT:
-    lcd.print(" ALT");
-  break;
+//  case XP_ALT:
+//    lcd.print(" ALT");
+//  break;
 
-  case XP_TEST:
-  default:
-    lcd.print("TEST");
-  break;
+//  case XP_TEST:
+//  default:
+//    lcd.print("TEST");
+//  break;
 
-  } // switch, display transponder mode and code
+//  } // switch, display transponder mode and code
 
   /////////////////
   // Transponder selection indication
