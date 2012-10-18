@@ -79,13 +79,13 @@ void setupOutput() {
 // changes, left/right in for prev/next channel
 //
 enum INPUT_PINS {
-  PIN_LEFT_ENC_A = 8,
-  PIN_LEFT_ENC_B = 0,
-  PIN_LEFT_IN = 4,
+  PIN_LEFT_ENC_A = 14,
+  PIN_LEFT_ENC_B = 15,
+  PIN_LEFT_IN = 18,
 
-  PIN_RIGHT_ENC_A = 17,
-  PIN_RIGHT_ENC_B = 12,
-  PIN_RIGHT_IN = 16
+  PIN_RIGHT_ENC_A = 16,
+  PIN_RIGHT_ENC_B = 17,
+  PIN_RIGHT_IN = 38
 };
 
 void setupInput () {
@@ -175,9 +175,9 @@ void loop() {
     dispTimer -= 80;
 
     displayUpdate();
-    // Flashing sequence is Six On, Two Off, per display updates.
+    // Flashing sequence is Five On, Three Off, per display updates.
     ++flashCount %= 8; // increment flashCount between 0 and 7
-    flashNow = (flashCount < 6);
+    flashNow = (flashCount < 5);
     //digitalWrite(LED_BUILTIN, flashNow);
   }
 
